@@ -323,40 +323,84 @@ function init(renderer) {
     camera.lookAt(lookTarget);
 
     renderer.render(scene, camera);
+    window.__mbcFrames = (window.__mbcFrames || 0) + 1;
+  }
+
+  let elapsed = 0;
+  function animationLoop() {
+    timer.update();
+    if (!heroOnScreen() || document.hidden) return;
+
+    // Clamp so the first frame after a paused tab doesn't jump the scene.
+    const delta = Math.min(timer.getDelta(), 0.1);
+    elapsed += delta;
+
+    // ease the sun toward the scroll-driven position
+    const targetElevation = SUN_START + (SUN_END - SUN_START) * scrollProgress();
+    const eased = THREE.MathUtils.lerp(
+      parameters.elevation,
+      targetElevation,
+      Math.min(1, delta * 5)
+    );
+    if (Math.abs(eased - parameters.elevation) > 0.001) {
+      parameters.elevation = eased;
+      // azimuth tracks elevation so both land together at sunset
+      const frac = (eased - SUN_END) / (SUN_START - SUN_END);
+      parameters.azimuth = AZ_END + (AZ_START - AZ_END) * frac;
+      updateSun();
+    }
+
+    renderFrame(elapsed, delta);
   }
 
   if (prefersReducedMotion) {
     renderFrame(12, 0);
   } else {
-    let elapsed = 0;
     // Paint immediately: if the very first animation frame is delayed or
     // skipped (mobile browsers throttle rAF during load), the canvas would
     // otherwise sit transparent over the fallback gradient.
     renderFrame(0, 0);
-    renderer.setAnimationLoop(() => {
-      timer.update();
-      if (!heroOnScreen() || document.hidden) return;
-
-      // Clamp so the first frame after a paused tab doesn't jump the scene.
-      const delta = Math.min(timer.getDelta(), 0.1);
-      elapsed += delta;
-
-      // ease the sun toward the scroll-driven position
-      const targetElevation = SUN_START + (SUN_END - SUN_START) * scrollProgress();
-      const eased = THREE.MathUtils.lerp(
-        parameters.elevation,
-        targetElevation,
-        Math.min(1, delta * 5)
-      );
-      if (Math.abs(eased - parameters.elevation) > 0.001) {
-        parameters.elevation = eased;
-        // azimuth tracks elevation so both land together at sunset
-        const frac = (eased - SUN_END) / (SUN_START - SUN_END);
-        parameters.azimuth = AZ_END + (AZ_START - AZ_END) * frac;
-        updateSun();
-      }
-
-      renderFrame(elapsed, delta);
-    });
+    renderer.setAnimationLoop(animationLoop);
   }
+
+  // ------------------------------------------------------------ watchdog
+  // iOS Safari can leave the page's rendering pipeline idle after load:
+  // with every hero animation running on the compositor thread, nothing
+  // schedules main-thread rendering updates, so rAF callbacks (and the
+  // loop above) may never run and the canvas stays blank until the first
+  // style change on the page (the Vision section's reveal, two viewports
+  // down). Timers keep firing in that state, so nudge from one until
+  // frames demonstrably advance: repaint, re-arm the loop, and mutate a
+  // style to force WebKit to schedule a real rendering update.
+  let watchdogFrames = -1;
+  let nudges = 0;
+  const watchdog = setInterval(() => {
+    if (prefersReducedMotion) {
+      nudges++;
+      renderFrame(12, 0);
+      canvas.style.opacity = nudges % 2 ? '0.999' : '';
+      if (nudges >= 6) {
+        clearInterval(watchdog);
+        canvas.style.opacity = '';
+      }
+      return;
+    }
+
+    const frames = window.__mbcFrames || 0;
+    if (frames > watchdogFrames + 2) {
+      // the loop is ticking on its own; stand down
+      clearInterval(watchdog);
+      canvas.style.opacity = '';
+      return;
+    }
+    watchdogFrames = frames;
+    nudges++;
+    renderer.setAnimationLoop(null);
+    renderer.setAnimationLoop(animationLoop);
+    renderFrame(0, 0);
+    canvas.style.opacity = nudges % 2 ? '0.999' : '';
+    if (nudges >= 20) clearInterval(watchdog);
+  }, 500);
+
+  window.__mbcInit = true;
 }
