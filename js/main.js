@@ -328,9 +328,9 @@ function init(renderer) {
 
   // Far layer: hazy, almost dissolving into the sky.
   const ridgeFarL = makeRidge({ seed: 3.7, width: 9000, maxHeight: 300, color: 0x6a5a72 });
-  ridgeFarL.position.set(-5200, 0, -9500);
-  const ridgeFarR = makeRidge({ seed: 8.1, width: 8000, maxHeight: 340, color: 0x6a5a72 });
-  ridgeFarR.position.set(5400, 0, -9500);
+  ridgeFarL.position.set(-5200, 0, -7300);
+  const ridgeFarR = makeRidge({ seed: 8.1, width: 8000, maxHeight: 340, color: 0x3c3048 });
+  ridgeFarR.position.set(5400, 0, -7300);
   scene.add(ridgeFarL, ridgeFarR);
 
   // Near layer: darker, framing the open water where the sun sets.
