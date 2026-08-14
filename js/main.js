@@ -63,6 +63,53 @@ window.addEventListener('resize', () => {
 measureChrome();
 updateChromeVisibility();
 
+// Play the sunset by scrolling through the hero, instead of jumping
+// to #vision. html { scroll-behavior: smooth } would fight a
+// per-frame scrollTo, so it is forced to auto for the duration.
+document.querySelector('.scroll-cue')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  const target = hero.offsetHeight;
+  if (prefersReducedMotion) {
+    window.scrollTo(0, target);
+    return;
+  }
+
+  const start = window.scrollY;
+  const distance = target - start;
+  if (Math.abs(distance) < 2) return;
+
+  const duration = 4000;
+  const html = document.documentElement;
+  const previousBehavior = html.style.scrollBehavior;
+  html.style.scrollBehavior = 'auto';
+
+  let startTime = null;
+  let cancelled = false;
+  const stop = () => {
+    cancelled = true;
+    html.style.scrollBehavior = previousBehavior;
+    window.removeEventListener('wheel', stop);
+    window.removeEventListener('touchstart', stop);
+    window.removeEventListener('keydown', stop);
+  };
+  window.addEventListener('wheel', stop, { passive: true });
+  window.addEventListener('touchstart', stop, { passive: true });
+  window.addEventListener('keydown', stop);
+
+  const easeInOutCubic = (t) =>
+    t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+
+  const step = (now) => {
+    if (cancelled) return;
+    if (startTime === null) startTime = now;
+    const t = Math.min(1, (now - startTime) / duration);
+    window.scrollTo(0, start + distance * easeInOutCubic(t));
+    if (t < 1) requestAnimationFrame(step);
+    else stop();
+  };
+  requestAnimationFrame(step);
+});
+
 // ---------------------------------------------------------------- reveal-on-scroll
 // Runs regardless of WebGL support.
 const revealObserver = new IntersectionObserver(

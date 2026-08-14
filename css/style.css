@@ -268,25 +268,89 @@ body {
   position: absolute;
   bottom: clamp(1.4rem, 4vh, 2.6rem);
   left: 50%;
-  transform: translateX(-50%);
   z-index: 3;
-  width: 26px;
-  height: 44px;
-  border: 1px solid rgba(236, 227, 208, 0.35);
-  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-left: -24px;
+  color: var(--sand);
+  border: 1px solid var(--gold-soft);
+  border-radius: 50%;
+  background: rgba(7, 13, 20, 0.42);
+  cursor: pointer;
   animation: fadeUp 1.8s ease 2.2s both;
 }
 
-.scroll-cue span {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  width: 2px;
-  height: 8px;
-  margin-left: -1px;
-  border-radius: 2px;
-  background: var(--sand);
-  animation: scrollDot 2.4s ease-in-out infinite;
+.scroll-cue-mouse {
+  display: none;
+}
+
+.scroll-cue-down {
+  width: 22px;
+  height: 22px;
+}
+
+/* Fine pointer: mouse wheel cue, morphs into the down button on hover. */
+@media (hover: hover) and (pointer: fine) {
+  .scroll-cue {
+    width: 26px;
+    height: 44px;
+    margin-left: -13px;
+    border-color: rgba(236, 227, 208, 0.35);
+    border-radius: 14px;
+    background: transparent;
+    transition:
+      width 0.35s ease,
+      height 0.35s ease,
+      margin-left 0.35s ease,
+      border-color 0.35s ease,
+      border-radius 0.35s ease,
+      background 0.35s ease,
+      color 0.35s ease;
+  }
+
+  .scroll-cue-mouse {
+    display: block;
+    position: absolute;
+    inset: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .scroll-cue-mouse span {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 2px;
+    height: 8px;
+    margin-left: -1px;
+    border-radius: 2px;
+    background: var(--sand);
+    animation: scrollDot 2.4s ease-in-out infinite;
+  }
+
+  .scroll-cue-down {
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .scroll-cue:hover,
+  .scroll-cue:focus-visible {
+    width: 48px;
+    height: 48px;
+    margin-left: -24px;
+    color: var(--gold);
+    border-color: var(--gold);
+    border-radius: 50%;
+    background: rgba(7, 13, 20, 0.28);
+  }
+
+  .scroll-cue:hover .scroll-cue-mouse,
+  .scroll-cue:focus-visible .scroll-cue-mouse { opacity: 0; }
+
+  .scroll-cue:hover .scroll-cue-down,
+  .scroll-cue:focus-visible .scroll-cue-down { opacity: 1; }
 }
 
 /* ---------------- Sections ---------------- */
@@ -508,7 +572,7 @@ body {
   .hero-header, .eyebrow, .hero h1, .rule, .hero-sub, .coming-soon, .scroll-cue {
     animation: none;
   }
-  .scroll-cue span { animation: none; }
+  .scroll-cue-mouse span { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
 }
 
