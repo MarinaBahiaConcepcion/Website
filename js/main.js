@@ -12,9 +12,39 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 const canvas = document.getElementById('scene');
+const sceneRoot = document.getElementById('scene-root');
 const hero = document.getElementById('hero'); // tall scroll region
 const chrome = document.querySelector('.hero-chrome');
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// iOS does not paint a position:fixed WebGL canvas until the first
+// scroll. Pin an absolutely-positioned root to the visual viewport
+// instead, so the canvas is a normal in-flow block from frame one.
+function viewportRect() {
+  const vv = window.visualViewport;
+  return {
+    w: Math.max(1, Math.round(vv?.width || window.innerWidth)),
+    h: Math.max(1, Math.round(vv?.height || window.innerHeight)),
+    top: window.scrollY + (vv?.offsetTop || 0),
+    left: window.scrollX + (vv?.offsetLeft || 0),
+  };
+}
+
+function pinSceneRoot() {
+  const { w, h, top, left } = viewportRect();
+  sceneRoot.style.top = `${top}px`;
+  sceneRoot.style.left = `${left}px`;
+  sceneRoot.style.width = `${w}px`;
+  sceneRoot.style.height = `${h}px`;
+  return { w, h };
+}
+
+{
+  const boot = pinSceneRoot();
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  canvas.width = Math.max(1, Math.floor(boot.w * dpr));
+  canvas.height = Math.max(1, Math.floor(boot.h * dpr));
+}
 
 // Hide the fixed chrome once the first content section reaches the top,
 // so it doesn't keep intercepting taps / focus under the opaque page.
@@ -47,11 +77,13 @@ try {
   renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
+    alpha: false,
+    preserveDrawingBuffer: true,
     outputBufferType: THREE.HalfFloatType,
   });
 } catch {
   // No WebGL: the CSS gradient behind the canvas stands in for the scene.
-  canvas.remove();
+  sceneRoot.remove();
 }
 
 if (renderer) {
@@ -62,10 +94,9 @@ function init(renderer) {
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
   // WebGL is live: drop the chrome's fallback gradient so the canvas shows.
   document.documentElement.classList.add('has-webgl');
-  // The canvas is a fixed viewport backdrop sized by CSS; the third
-  // argument keeps setSize from overriding that with inline styles.
-  const sceneW = canvas.clientWidth;
-  const sceneH = canvas.clientHeight;
+  // Size from the visual viewport, not canvas.clientWidth: on iOS a
+  // not-yet-composited canvas can report 0 until the first scroll.
+  const { w: sceneW, h: sceneH } = pinSceneRoot();
   // Cap the pixel ratio at 1.5: the scene renders three full-screen passes
   // per frame (main + mirror + bloom), and above 1.5 the GPU cost starts
   // starving the rest of the page (hover transitions, scrolling).
@@ -293,17 +324,29 @@ function init(renderer) {
     );
   }
 
-  // ------------------------------------------------------------ resize
-  window.addEventListener('resize', () => {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+  // ------------------------------------------------------------ resize / pin
+  let lastW = sceneW;
+  let lastH = sceneH;
+
+  function syncRendererSize() {
+    const { w, h } = pinSceneRoot();
+    heroHeight = hero.offsetHeight;
+    scrollRange = Math.max(1, heroHeight - h);
+    if (w === lastW && h === lastH) return;
+    lastW = w;
+    lastH = h;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
-    heroHeight = hero.offsetHeight;
-    scrollRange = heroHeight - window.innerHeight;
     if (prefersReducedMotion) renderFrame(12, 0);
-  });
+  }
+
+  window.addEventListener('scroll', pinSceneRoot, { passive: true });
+  window.addEventListener('resize', syncRendererSize);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', syncRendererSize);
+    visualViewport.addEventListener('scroll', pinSceneRoot, { passive: true });
+  }
 
   // ------------------------------------------------------------ animation
   const timer = new THREE.Timer();
@@ -316,6 +359,7 @@ function init(renderer) {
   // until the next scroll, which left the canvas unpainted behind the
   // fallback gradient on mobile until the user scrolled.
   function heroOnScreen() {
+    if (heroHeight <= 0) return true;
     return window.scrollY < heroHeight;
   }
 
@@ -369,54 +413,26 @@ function init(renderer) {
     renderFrame(elapsed, delta);
   }
 
+  function present() {
+    syncRendererSize();
+    renderFrame(prefersReducedMotion ? 12 : elapsed, 0);
+    const gl = renderer.getContext();
+    if (gl.flush) gl.flush();
+  }
+
   if (prefersReducedMotion) {
-    renderFrame(12, 0);
+    present();
   } else {
-    // Paint immediately: if the very first animation frame is delayed or
-    // skipped (mobile browsers throttle rAF during load), the canvas would
-    // otherwise sit transparent over the fallback gradient.
-    renderFrame(0, 0);
+    present();
     renderer.setAnimationLoop(animationLoop);
   }
 
-  // ------------------------------------------------------------ watchdog
-  // iOS Safari can leave the page's rendering pipeline idle after load:
-  // with every hero animation running on the compositor thread, nothing
-  // schedules main-thread rendering updates, so rAF callbacks (and the
-  // loop above) may never run and the canvas stays blank until the first
-  // style change on the page (the Vision section's reveal, two viewports
-  // down). Timers keep firing in that state, so nudge from one until
-  // frames demonstrably advance: repaint, re-arm the loop, and mutate a
-  // style to force WebKit to schedule a real rendering update.
-  let watchdogFrames = -1;
-  let nudges = 0;
-  const watchdog = setInterval(() => {
-    if (prefersReducedMotion) {
-      nudges++;
-      renderFrame(12, 0);
-      canvas.style.opacity = nudges % 2 ? '0.999' : '';
-      if (nudges >= 6) {
-        clearInterval(watchdog);
-        canvas.style.opacity = '';
-      }
-      return;
-    }
-
-    const frames = window.__mbcFrames || 0;
-    if (frames > watchdogFrames + 2) {
-      // the loop is ticking on its own; stand down
-      clearInterval(watchdog);
-      canvas.style.opacity = '';
-      return;
-    }
-    watchdogFrames = frames;
-    nudges++;
-    renderer.setAnimationLoop(null);
-    renderer.setAnimationLoop(animationLoop);
-    renderFrame(0, 0);
-    canvas.style.opacity = nudges % 2 ? '0.999' : '';
-    if (nudges >= 20) clearInterval(watchdog);
-  }, 500);
+  // Re-present after layout / pageshow. iOS often creates the GL
+  // context before the visual viewport has its final size.
+  requestAnimationFrame(() => requestAnimationFrame(present));
+  window.addEventListener('pageshow', present);
+  setTimeout(present, 100);
+  setTimeout(present, 400);
 
   window.__mbcInit = true;
 }

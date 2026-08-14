@@ -43,11 +43,13 @@ const t0 = Date.now();
 
 setInterval(() => {
   const canvas = document.getElementById('scene');
+  const root = document.getElementById('scene-root');
   const hero = document.getElementById('hero');
   overlay.textContent =
     `t ${Math.floor((Date.now() - t0) / 1000)}s  raf ${rafTicks}\n` +
     `frames ${window.__mbcFrames || 0}  init ${window.__mbcInit ? 'y' : 'n'}  rm ${reducedMotion ? 'y' : 'n'}\n` +
     `canvas ${canvas ? canvas.width + 'x' + canvas.height : 'REMOVED'}  scrollY ${Math.round(window.scrollY)}\n` +
-    `heroH ${hero ? hero.offsetHeight : '?'}  innerH ${window.innerHeight}  webgl ${document.documentElement.classList.contains('has-webgl') ? 'y' : 'n'}` +
+    `heroH ${hero ? hero.offsetHeight : '?'}  innerH ${window.innerHeight}  webgl ${document.documentElement.classList.contains('has-webgl') ? 'y' : 'n'}\n` +
+    `pin ${root ? root.style.top || '0px' : 'none'} ${root ? root.style.width : ''}x${root ? root.style.height : ''}` +
     (lastError ? `\nerr ${lastError}` : '');
 }, 250);

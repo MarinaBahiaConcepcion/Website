@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="css/style.css?v=5" />
+  <link rel="stylesheet" href="css/style.css?v=6" />
 
   <script type="importmap">
     {
@@ -30,11 +30,12 @@
 </head>
 <body>
 
-  <!-- Fixed viewport backdrop. Not a child of the hero and not
-       z-index: -1: iOS WebKit promotes position:sticky to an opaque
-       compositor layer, and a negative-z canvas sits behind <html>'s
-       background, so the scene stayed hidden until the sticky unstuck. -->
-  <canvas id="scene" aria-hidden="true"></canvas>
+  <!-- Absolutely positioned, then JS-pinned to the visual viewport.
+       A position:fixed WebGL canvas stays blank on iOS until the first
+       scroll (the z-index: 9099999 test still needed a scroll to appear). -->
+  <div id="scene-root" aria-hidden="true">
+    <canvas id="scene"></canvas>
+  </div>
 
   <!-- ============ HERO ============ -->
   <!-- Tall scroll region: scrolling through it sets the sun. The
@@ -176,9 +177,9 @@
     </div>
   </footer>
 
-  <script type="module" src="js/i18n.js?v=5"></script>
-  <script type="module" src="js/main.js?v=5"></script>
+  <script type="module" src="js/i18n.js?v=6"></script>
+  <script type="module" src="js/main.js?v=6"></script>
   <!-- TEMPORARY: on-page diagnostics for the iPhone blank-canvas bug -->
-  <script type="module" src="js/debug.js?v=5"></script>
+  <script type="module" src="js/debug.js?v=6"></script>
 </body>
 </html>
