@@ -52,6 +52,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Promote to a stable GPU compositor layer. iOS WebKit otherwise fails
+     to paint the WebGL canvas inside a pinned sticky container until the
+     sticky element first moves (WebKit sticky repaint bugs, e.g. 226532),
+     leaving the fallback gradient below on screen until the hero was
+     scrolled through. Must be on the sticky element itself: a transform
+     on an ancestor would break position: sticky in Safari. */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   /* fallback sunset if WebGL is unavailable */
   background: linear-gradient(
     to bottom,
@@ -70,6 +80,10 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+  /* Own compositor layer for the same iOS WebKit sticky-repaint reason
+     as .hero-sticky above. */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .hero-scrim {
@@ -200,6 +214,7 @@ body {
   border-radius: 2em;
   padding: 0.85em 2.1em;
   display: inline-block;
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   background: rgba(7, 13, 20, 0.18);
   animation: fadeUp 1.8s cubic-bezier(0.22, 1, 0.36, 1) 1.55s both;
