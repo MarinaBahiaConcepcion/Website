@@ -206,6 +206,13 @@ body {
   animation: fadeUp 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.55s both;
 }
 
+/* White + difference = a photographic negative of whatever is
+   behind the glyphs (sky, water, sun) as the sunset scrolls. */
+.hero .eyebrow {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+
 .hero h1 {
   font-family: var(--serif);
   font-weight: 300;

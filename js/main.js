@@ -92,8 +92,8 @@ const SHOW_ERRORS = location.hash.includes('debug') || location.hash.includes('e
 // a `const` placed after that call sits in the temporal dead zone and
 // throws the moment init() touches it.
 const LOOK = {
-  exposure: Number(HASH.get('exposure')) || 0.5,
-  sunStart: Number(HASH.get('sun')) || 22,
+  exposure: Number(HASH.get('exposure')) || 0.1,
+  sunStart: Number(HASH.get('sun')) || 35,
 };
 
 // Any failure here is reported on the page rather than swallowed. The
@@ -255,7 +255,7 @@ function init(renderer) {
   const SUN_START = LOOK.sunStart;
   const SUN_END = 0;
   const AZ_START = 250;
-  const AZ_END = 210;
+  const AZ_END = 200;
   const parameters = {
     elevation: prefersReducedMotion ? SUN_END : SUN_START,
     azimuth: prefersReducedMotion ? AZ_END : AZ_START,
