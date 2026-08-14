@@ -103,6 +103,14 @@ if (renderer) {
   init(renderer);
 }
 
+// ---------------------------------------------------------------- look
+// Tunable from the URL while dialling it in on a phone, e.g.
+//   .../#debug&exposure=0.7&sun=30
+const LOOK = {
+  exposure: Number(new URLSearchParams(location.hash.slice(1)).get('exposure')) || 0.5,
+  sunStart: Number(new URLSearchParams(location.hash.slice(1)).get('sun')) || 22,
+};
+
 function init(renderer) {
   const isMobile = isPhone;
   // Marker class for styling hooks; the fallback is removed in JS, not CSS.
@@ -117,7 +125,10 @@ function init(renderer) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 1.5));
   renderer.setSize(sceneW, sceneH, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.1;
+  // 0.5 is the value the three.js ocean example uses with these exact
+  // sky settings. At 0.1 the scene renders correctly but is so dark it
+  // reads as an empty black box until the sun nears the horizon.
+  renderer.toneMappingExposure = LOOK.exposure;
 
   // Bloom at strength 0.06 / radius 0 is very close to a no-op visually,
   // but any effect chain forces the whole scene through an offscreen
@@ -191,7 +202,10 @@ function init(renderer) {
   // Scrolling through the hero animates the sun from afternoon to sunset:
   // it descends (35° to 0°) while arcing from off-frame left to dead center
   // between the ridges, like the real sun tracking west.
-  const SUN_START = 65;
+  // 65 degrees is almost directly overhead and sits outside the camera
+  // frustum, so the top of the page had no visible sun at all. A low
+  // afternoon sun is in frame and warm from the first pixel.
+  const SUN_START = LOOK.sunStart;
   const SUN_END = 0;
   const AZ_START = 250;
   const AZ_END = 210;
@@ -511,7 +525,8 @@ function init(renderer) {
         `frames ${window.__mbcFrames || 0}  scrollY ${Math.round(window.scrollY)}\n` +
         `canvas ${canvas.width}x${canvas.height}  css ${canvas.clientWidth}x${canvas.clientHeight}\n` +
         `effects ${isMobile ? 'off' : 'bloom'}  ctxlost ${gl.isContextLost() ? 'YES' : 'no'}\n` +
-        `fallback ${document.getElementById('scene-fallback') ? 'present' : 'removed'}`;
+        `fallback ${document.getElementById('scene-fallback') ? 'present' : 'removed'}\n` +
+        `exposure ${LOOK.exposure}  sun ${parameters.elevation.toFixed(1)}deg`;
     }, 250);
   }
 }
