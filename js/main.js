@@ -159,7 +159,8 @@ function init(renderer) {
   // 0 at the top of the page, 1 when the hero has been scrolled through.
   // The hero sits at the top of the document, so window.scrollY tracks it
   // without the forced layout a per-frame getBoundingClientRect would cost.
-  let scrollRange = hero.offsetHeight - stage.offsetHeight;
+  let heroHeight = hero.offsetHeight;
+  let scrollRange = heroHeight - stage.offsetHeight;
   function scrollProgress() {
     if (scrollRange <= 0) return 1;
     return THREE.MathUtils.clamp(window.scrollY / scrollRange, 0, 1);
@@ -283,21 +284,24 @@ function init(renderer) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
-    scrollRange = hero.offsetHeight - stage.offsetHeight;
+    heroHeight = hero.offsetHeight;
+    scrollRange = heroHeight - stage.offsetHeight;
     if (prefersReducedMotion) renderFrame(12, 0);
   });
 
   // ------------------------------------------------------------ animation
   const timer = new THREE.Timer();
   const lookTarget = new THREE.Vector3(0, -950, -6000);
-  let heroVisible = true;
 
-  new IntersectionObserver(
-    ([entry]) => {
-      heroVisible = entry.isIntersecting;
-    },
-    { threshold: 0.01 }
-  ).observe(hero);
+  // The hero sits at the top of the document, so it is on screen exactly
+  // while scrollY is above its bottom edge. Computed from scroll position
+  // rather than an IntersectionObserver: Safari can deliver a wrong initial
+  // observation during page load (WebKit bug 197891) and sends no correction
+  // until the next scroll, which left the canvas unpainted behind the
+  // fallback gradient on mobile until the user scrolled.
+  function heroOnScreen() {
+    return window.scrollY < heroHeight;
+  }
 
   function renderFrame(time, delta) {
     water.material.uniforms.time.value += delta;
@@ -325,9 +329,13 @@ function init(renderer) {
     renderFrame(12, 0);
   } else {
     let elapsed = 0;
+    // Paint immediately: if the very first animation frame is delayed or
+    // skipped (mobile browsers throttle rAF during load), the canvas would
+    // otherwise sit transparent over the fallback gradient.
+    renderFrame(0, 0);
     renderer.setAnimationLoop(() => {
       timer.update();
-      if (!heroVisible || document.hidden) return;
+      if (!heroOnScreen() || document.hidden) return;
 
       // Clamp so the first frame after a paused tab doesn't jump the scene.
       const delta = Math.min(timer.getDelta(), 0.1);
