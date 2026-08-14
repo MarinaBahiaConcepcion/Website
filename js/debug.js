@@ -11,7 +11,7 @@ overlay.style.cssText = [
   'position:fixed',
   'top:4px',
   'left:4px',
-  'z-index:99999',
+  'z-index:99999999',
   'background:rgba(0,0,0,0.75)',
   'color:#4f4',
   'font:11px/1.5 monospace',
