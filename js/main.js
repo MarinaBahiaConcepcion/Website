@@ -41,7 +41,16 @@ function sceneSize() {
 // forces a synchronous layout on every single scroll event.
 let chromeHideAt = 0;
 function measureChrome() {
-  chromeHideAt = hero.offsetHeight - window.innerHeight;
+  // The hero occupies document 0..heroHeight, so the first content
+  // section's top edge sits exactly at heroHeight and covers the fixed
+  // chrome completely at that scroll position. Subtracting a viewport
+  // here fired a full screen early — the moment the section merely
+  // appeared at the BOTTOM edge — which blanked the hero text roughly
+  // two thirds of the way through the scroll, still over open scene.
+  // Sections are z-index 2 over the chrome's z-index 1, so by the time
+  // this fires the chrome is already hidden behind opaque background;
+  // is-away only stops it intercepting taps underneath.
+  chromeHideAt = hero.offsetHeight;
 }
 function updateChromeVisibility() {
   chrome.classList.toggle('is-away', window.scrollY >= chromeHideAt);
@@ -73,9 +82,10 @@ document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el))
 const isPhone = window.matchMedia('(max-width: 768px)').matches;
 const HASH = new URLSearchParams(location.hash.slice(1));
 const DEBUG = location.hash.includes('debug');
-// Errors are shown on the page unless silenced with #quiet. Turn this
-// off once the scene is confirmed working on the phone.
-const SHOW_ERRORS = !location.hash.includes('quiet');
+// Failures always reach the console. The on-page red banner is opt-in
+// via #debug now that the scene is confirmed working, so a visitor
+// never sees it.
+const SHOW_ERRORS = location.hash.includes('debug') || location.hash.includes('errors');
 
 // Every constant used inside init() is declared ABOVE the call site.
 // init() is invoked before its own declaration (function hoisting), so
