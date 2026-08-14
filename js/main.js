@@ -17,30 +17,19 @@ const hero = document.getElementById('hero'); // tall scroll region
 const chrome = document.querySelector('.hero-chrome');
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// iOS does not paint a position:fixed WebGL canvas until the first
-// scroll. Pin an absolutely-positioned root to the visual viewport
-// instead, so the canvas is a normal in-flow block from frame one.
-function viewportRect() {
-  const vv = window.visualViewport;
-  return {
-    w: Math.max(1, Math.round(vv?.width || window.innerWidth)),
-    h: Math.max(1, Math.round(vv?.height || window.innerHeight)),
-    top: window.scrollY + (vv?.offsetTop || 0),
-    left: window.scrollX + (vv?.offsetLeft || 0),
-  };
-}
-
-function pinSceneRoot() {
-  const { w, h, top, left } = viewportRect();
-  sceneRoot.style.top = `${top}px`;
-  sceneRoot.style.left = `${left}px`;
-  sceneRoot.style.width = `${w}px`;
-  sceneRoot.style.height = `${h}px`;
-  return { w, h };
+// #scene-root is position:fixed and sized in CSS (100lvh). Nothing here
+// repositions it on scroll: an absolutely-positioned box chasing
+// window.scrollY from a scroll handler can never stay in sync with the
+// iOS compositor during momentum scrolling, which is what made the
+// scene visibly lag and stutter. The compositor owns it now.
+function sceneSize() {
+  const w = sceneRoot.clientWidth || window.innerWidth;
+  const h = sceneRoot.clientHeight || window.innerHeight;
+  return { w: Math.max(1, Math.round(w)), h: Math.max(1, Math.round(h)) };
 }
 
 {
-  const boot = pinSceneRoot();
+  const boot = sceneSize();
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   canvas.width = Math.max(1, Math.floor(boot.w * dpr));
   canvas.height = Math.max(1, Math.floor(boot.h * dpr));
@@ -48,12 +37,21 @@ function pinSceneRoot() {
 
 // Hide the fixed chrome once the first content section reaches the top,
 // so it doesn't keep intercepting taps / focus under the opaque page.
+// hideAt is cached: reading hero.offsetHeight inside a scroll handler
+// forces a synchronous layout on every single scroll event.
+let chromeHideAt = 0;
+function measureChrome() {
+  chromeHideAt = hero.offsetHeight - window.innerHeight;
+}
 function updateChromeVisibility() {
-  const hideAt = hero.offsetHeight - window.innerHeight;
-  chrome.classList.toggle('is-away', window.scrollY >= hideAt);
+  chrome.classList.toggle('is-away', window.scrollY >= chromeHideAt);
 }
 window.addEventListener('scroll', updateChromeVisibility, { passive: true });
-window.addEventListener('resize', updateChromeVisibility);
+window.addEventListener('resize', () => {
+  measureChrome();
+  updateChromeVisibility();
+});
+measureChrome();
 updateChromeVisibility();
 
 // ---------------------------------------------------------------- reveal-on-scroll
@@ -74,16 +72,21 @@ document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el))
 // ---------------------------------------------------------------- renderer
 let renderer;
 try {
+  const isPhone = window.matchMedia('(max-width: 768px)').matches;
   renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    // MSAA is a meaningful cost on a phone GPU for a scene that is
+    // mostly water and soft silhouettes, where it buys very little.
+    antialias: !isPhone,
     alpha: false,
-    preserveDrawingBuffer: true,
+    // preserveDrawingBuffer forces the driver to copy the framebuffer
+    // every frame. It was masking the compositing bug, not fixing it.
+    preserveDrawingBuffer: false,
     outputBufferType: THREE.HalfFloatType,
   });
 } catch {
-  // No WebGL: the CSS gradient behind the canvas stands in for the scene.
-  sceneRoot.remove();
+  // No WebGL: #scene-fallback stays in place as the sunset stand-in.
+  canvas.remove();
 }
 
 if (renderer) {
@@ -92,15 +95,16 @@ if (renderer) {
 
 function init(renderer) {
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
-  // WebGL is live: drop the chrome's fallback gradient so the canvas shows.
+  // Marker class for styling hooks; the fallback is removed in JS, not CSS.
   document.documentElement.classList.add('has-webgl');
-  // Size from the visual viewport, not canvas.clientWidth: on iOS a
-  // not-yet-composited canvas can report 0 until the first scroll.
-  const { w: sceneW, h: sceneH } = pinSceneRoot();
-  // Cap the pixel ratio at 1.5: the scene renders three full-screen passes
-  // per frame (main + mirror + bloom), and above 1.5 the GPU cost starts
-  // starving the rest of the page (hover transitions, scrolling).
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  // Size from #scene-root, which is laid out by CSS and always reports
+  // a real height, rather than from the canvas itself.
+  const { w: sceneW, h: sceneH } = sceneSize();
+  // Cap the pixel ratio: the scene renders three full-screen passes per
+  // frame (main + mirror + bloom). 1.5 already starves the rest of the
+  // page on desktop; on a 3x iPhone panel it is the single biggest
+  // reason scrolling stutters, so phones get 1.25.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 1.5));
   renderer.setSize(sceneW, sceneH, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.1;
@@ -129,7 +133,10 @@ function init(renderer) {
   const waterGeometry = new THREE.PlaneGeometry(24000, 24000);
   // High-res mirror target: at 512 the ridge reflections pixelate when
   // stretched across the full viewport
-  const mirrorRes = isMobile ? 1024 : 2048;
+  // The mirror is a second full render of the scene every frame. At 1024
+  // on a phone that alone can halve the frame rate; 512 is plenty when
+  // the reflection is squeezed into a narrow portrait viewport.
+  const mirrorRes = isMobile ? 512 : 2048;
   const water = new Water(waterGeometry, {
     textureWidth: mirrorRes,
     textureHeight: mirrorRes,
@@ -329,9 +336,10 @@ function init(renderer) {
   let lastH = sceneH;
 
   function syncRendererSize() {
-    const { w, h } = pinSceneRoot();
+    const { w, h } = sceneSize();
     heroHeight = hero.offsetHeight;
-    scrollRange = Math.max(1, heroHeight - h);
+    scrollRange = Math.max(1, heroHeight - window.innerHeight);
+    measureChrome();
     if (w === lastW && h === lastH) return;
     lastW = w;
     lastH = h;
@@ -341,11 +349,20 @@ function init(renderer) {
     if (prefersReducedMotion) renderFrame(12, 0);
   }
 
-  window.addEventListener('scroll', pinSceneRoot, { passive: true });
-  window.addEventListener('resize', syncRendererSize);
+  // No scroll listeners here at all. On iOS the URL bar collapsing fires
+  // visualViewport resize repeatedly mid-scroll, so that is debounced to
+  // a single settled measurement rather than resizing render targets
+  // (and reallocating the bloom + mirror buffers) during the gesture.
+  let resizeTimer;
+  function scheduleResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(syncRendererSize, 150);
+  }
+
+  window.addEventListener('resize', scheduleResize);
+  window.addEventListener('orientationchange', scheduleResize);
   if (window.visualViewport) {
-    visualViewport.addEventListener('resize', syncRendererSize);
-    visualViewport.addEventListener('scroll', pinSceneRoot, { passive: true });
+    visualViewport.addEventListener('resize', scheduleResize);
   }
 
   // ------------------------------------------------------------ animation
@@ -413,11 +430,24 @@ function init(renderer) {
     renderFrame(elapsed, delta);
   }
 
+  // The fallback gradient is removed only once a real frame has been
+  // drawn, so there is never a moment showing an empty canvas — and
+  // because it is a DOM removal behind the canvas rather than a
+  // background swap on a composited overlay, iOS has nothing stale
+  // left to composite on top of the scene.
+  let fallbackCleared = false;
+  function clearFallback() {
+    if (fallbackCleared) return;
+    fallbackCleared = true;
+    document.getElementById('scene-fallback')?.remove();
+  }
+
   function present() {
     syncRendererSize();
     renderFrame(prefersReducedMotion ? 12 : elapsed, 0);
     const gl = renderer.getContext();
     if (gl.flush) gl.flush();
+    clearFallback();
   }
 
   if (prefersReducedMotion) {
