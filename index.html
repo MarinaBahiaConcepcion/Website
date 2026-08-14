@@ -1,185 +1,156 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Marina Bahía Concepción · Coming Soon · Baja California Sur, México</title>
-  <meta name="description" content="A private marina & resort on the Sea of Cortés. Docks, mooring buoys, club house, beach cabañas and more, coming soon to Bahía Concepción, Baja California Sur, México." />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>iOS WebGL first-paint isolation test</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { background:#111; overflow-x:clip; }
+  body { position:relative; color:#fff; font:13px/1.5 -apple-system,system-ui,sans-serif; }
 
-  <meta property="og:title" content="Marina Bahía Concepción" />
-  <meta property="og:description" content="A private marina & resort on the Sea of Cortés, coming soon to Bahía Concepción, Baja California Sur." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://marinabahiaconcepcion.com" />
+  /* Same structure as the real site */
+  #scene-root {
+    position:fixed; top:0; left:0; width:100%;
+    height:100vh; height:100lvh;
+    z-index:0; pointer-events:none; overflow:hidden;
+    transform:translateZ(0); -webkit-transform:translateZ(0);
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  }
+  #scene { position:relative; display:block; width:100%; height:100%; }
 
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  /* Stand-in for .hero-chrome */
+  #chrome {
+    position:fixed; top:0; left:0; width:100%; height:100svh;
+    z-index:1; pointer-events:none;
+  }
+  #chrome.with-bg {
+    background:linear-gradient(to bottom,#1b2a4a,#93536b 52%,#101c2b);
+  }
+  #scrim {
+    position:absolute; inset:0;
+    background:
+      linear-gradient(to bottom, rgba(7,13,20,.55) 0%, transparent 40%),
+      linear-gradient(to top, rgba(7,13,20,.9) 0%, transparent 36%);
+  }
+  #spacer { position:relative; z-index:2; height:300svh; }
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet" />
-
-  <link rel="stylesheet" href="css/style.css?v=8" />
-
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
-      }
-    }
-  </script>
+  #panel {
+    position:fixed; left:0; right:0; bottom:0; z-index:9999;
+    background:rgba(0,0,0,.86); padding:10px 12px;
+    border-top:1px solid #444;
+  }
+  #panel b { color:#6f6; }
+  #verdict { font:12px/1.5 ui-monospace,monospace; color:#6f6; white-space:pre; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  a.btn {
+    display:inline-block; padding:7px 10px; border:1px solid #666;
+    border-radius:6px; color:#fff; text-decoration:none; font-size:12px;
+  }
+  a.btn.on { border-color:#6f6; color:#6f6; }
+</style>
 </head>
 <body>
 
-  <!-- position:fixed and composited by the browser, never by JS.
-       The fallback gradient lives BEHIND the canvas in here, so no
-       overlay above the canvas ever needs a background repaint. -->
-  <div id="scene-root" aria-hidden="true">
-    <div id="scene-fallback"></div>
-    <canvas id="scene"></canvas>
-  </div>
+<div id="scene-root"><canvas id="scene"></canvas></div>
 
-  <!-- ============ HERO ============ -->
-  <!-- Tall scroll region: scrolling through it sets the sun. The
-       chrome is position:fixed and permanently transparent — it must
-       never carry a background, or iOS composites it over the canvas. -->
-  <section class="hero" id="hero">
-    <div class="hero-chrome">
-      <div class="hero-scrim" aria-hidden="true"></div>
+<div id="chrome"><div id="scrim"></div></div>
 
-      <header class="hero-header">
-        <span class="wordmark">M&thinsp;B&thinsp;C</span>
-        <div class="header-right">
-          <span class="header-loc">Baja California Sur&ensp;·&ensp;México</span>
-          <button class="lang-toggle" type="button">Español</button>
-        </div>
-      </header>
+<div id="spacer"></div>
 
-      <div class="hero-content">
-        <p class="eyebrow" data-i18n="heroEyebrow">Bahía Concepción&ensp;·&ensp;Sea of Cortés</p>
-        <!-- Keep this number in lockstep with ?v= so iPhone cache is obvious. -->
-        <h1>Marina 8<br /><span>Bahía Concepción</span></h1>
-        <div class="rule" aria-hidden="true"></div>
-        <p class="hero-sub" data-i18n="heroSub">A private marina &amp; resort on the most beautiful bay in Baja</p>
-        <p class="coming-soon" data-i18n="comingSoon">Coming&ensp;Soon</p>
-      </div>
+<div id="panel">
+  <div><b>Do you see a rotating orange/teal scene RIGHT NOW, without scrolling?</b></div>
+  <div class="row" id="modes"></div>
+  <div id="verdict" style="margin-top:8px">booting…</div>
+</div>
 
-      <a class="scroll-cue" href="#vision" aria-label="Scroll to learn more" data-i18n-aria="scrollCue">
-        <span></span>
-      </a>
-    </div>
-  </section>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/" } }
+</script>
 
-  <!-- ============ VISION ============ -->
-  <section class="section vision" id="vision">
-    <div class="container reveal">
-      <p class="eyebrow" data-i18n="visionEyebrow">The Vision</p>
-      <h2 data-i18n="visionTitle">Anchor in paradise</h2>
-      <p class="lead" data-i18n="visionLead">
-        On the protected western shore of Bahía Concepción, where the desert meets
-        turquoise water, a private harbor is taking shape. Arrive by sea and step off
-        your yacht onto the dock, or arrive by land and disappear into a cabaña at the
-        water's edge. Swim, sail, dine, and watch the sun set over the Sierra.
-      </p>
-    </div>
-  </section>
+<script type="module">
+import * as THREE from 'three';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-  <!-- ============ AMENITIES ============ -->
-  <section class="section amenities" id="amenities">
-    <div class="container">
-      <div class="reveal">
-        <p class="eyebrow" data-i18n="amenitiesEyebrow">What's to Come</p>
-        <h2 data-i18n="amenitiesTitle">The Marina &amp; Resort</h2>
-      </div>
+const P = new URLSearchParams(location.search);
+const MODE = P.get('mode') || 'direct';
 
-      <ul class="amenity-grid">
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="5" r="2.2"/><path d="M12 7.2V21"/><path d="M4 13c0 5 3.5 8 8 8s8-3 8-8"/><path d="M4 13l-1.8 2.2M4 13l2.6 1.2"/><path d="M20 13l1.8 2.2M20 13l-2.6 1.2"/><path d="M8.5 9.5h7"/>
-          </svg>
-          <h3 data-i18n="dockTitle">Private Dock</h3>
-          <p data-i18n="dockDesc">Direct boat access from deep water. Tie up steps from the club house.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3v8"/><path d="M12 3l4.5 2L12 7"/><circle cx="12" cy="14" r="3"/><path d="M2.5 20c1.6-1.4 3.4-1.4 5 0s3.4 1.4 5 0 3.4-1.4 5 0 3.4 1.4 4 0"/>
-          </svg>
-          <h3 data-i18n="buoysTitle">Mooring Buoys</h3>
-          <p data-i18n="buoysDesc">Protected moorings for sailboats in the calm of the bay, season after season.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5.5 3h13l-6.5 8z"/><path d="M12 11v7"/><path d="M8 21h8"/><path d="M8.2 6.2h7.6"/>
-          </svg>
-          <h3 data-i18n="clubTitle">Club House</h3>
-          <p data-i18n="clubDesc">Lounge, restaurant &amp; bar, and an outdoor deck overlooking the water.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 8h18v10H3z"/><path d="M3 12.5c1.5 0 1.5 2 3 2s1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 1.5 2 3 2 1.5-2 3-2"/><path d="M7 8V6.5a2.5 2.5 0 0 1 5 0V8"/>
-          </svg>
-          <h3 data-i18n="poolTitle">Pool</h3>
-          <p data-i18n="poolDesc">A pool overlooking the bay. Swim with the Sea of Cortés on the horizon.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 20L20 4"/><ellipse cx="5.6" cy="18.4" rx="2.6" ry="1.7" transform="rotate(-45 5.6 18.4)"/><ellipse cx="18.4" cy="5.6" rx="2.6" ry="1.7" transform="rotate(-45 18.4 5.6)"/>
-          </svg>
-          <h3 data-i18n="beachTitle">Beach Access</h3>
-          <p data-i18n="beachDesc">A private stretch of sand with kayaks and paddle boards at the ready.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 11l9-7 9 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5.5h4V20"/>
-          </svg>
-          <h3 data-i18n="cabanasTitle">Ten Cabañas</h3>
-          <p data-i18n="cabanasDesc">Nos. 1 to 5 face the ocean at dawn; Nos. 6 to 10 face the sunset over the Sierra.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3c2.8 2.6 4.6 5 4.6 7.8A4.6 4.6 0 0 1 12 15.4a4.6 4.6 0 0 1-4.6-4.6C7.4 8 9.2 5.6 12 3z"/><path d="M5 21h14"/><path d="M7 18.2l10 1.6M17 18.2l-10 1.6"/>
-          </svg>
-          <h3 data-i18n="fireTitle">Fire Pit</h3>
-          <p data-i18n="fireDesc">A gathering place under some of the darkest, starriest skies in México.</p>
-        </li>
-        <li class="reveal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M9.5 16.5v-9h3.4a2.8 2.8 0 1 1 0 5.6H9.5"/>
-          </svg>
-          <h3 data-i18n="parkingTitle">Parking</h3>
-          <p data-i18n="parkingDesc">Arriving down Highway 1? Secure on-site parking awaits.</p>
-        </li>
-      </ul>
-    </div>
-  </section>
+// mode matrix
+const MODES = {
+  direct:    { half:false, bloom:false, chromeBg:false, label:'1 · direct draw' },
+  halffloat: { half:true,  bloom:false, chromeBg:false, label:'2 · + halffloat' },
+  bloom:     { half:false, bloom:true,  chromeBg:false, label:'3 · + bloom' },
+  both:      { half:true,  bloom:true,  chromeBg:false, label:'4 · half+bloom' },
+  chromebg:  { half:false, bloom:false, chromeBg:true,  label:'5 · chrome bg' },
+};
+const cfg = MODES[MODE] || MODES.direct;
 
-  <!-- ============ LOCATION ============ -->
-  <section class="section location" id="location">
-    <div class="container reveal">
-      <p class="eyebrow" data-i18n="locationEyebrow">The Location</p>
-      <h2>Bahía Concepción</h2>
-      <p class="lead" data-i18n="locationLead">
-        South of Mulegé on the Sea of Cortés, a 40&#8239;km bay of white-sand coves
-        and impossibly clear water, sheltered by the Concepción peninsula.
-      </p>
-      <p class="coords">26.6191°&thinsp;N&ensp;·&ensp;111.7065°&thinsp;W</p>
-      <a class="map-link" href="https://maps.google.com/?q=26.619052513457238,-111.70654410884556" target="_blank" rel="noopener">
-        <span data-i18n="mapLink">View on Google Maps</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>
-      </a>
-    </div>
-  </section>
+const nav = document.getElementById('modes');
+for (const [k, v] of Object.entries(MODES)) {
+  const a = document.createElement('a');
+  a.className = 'btn' + (k === MODE ? ' on' : '');
+  a.href = '?mode=' + k;
+  a.textContent = v.label;
+  nav.appendChild(a);
+}
 
-  <!-- ============ FOOTER ============ -->
-  <footer class="footer">
-    <div class="container">
-      <span class="wordmark">M&thinsp;B&thinsp;C</span>
-      <p>Marina Bahía Concepción · Baja California Sur, México</p>
-      <p class="fine" data-i18n="footerFine">In development. Opening to be announced.<br />© 2026 marinabahiaconcepcion.com</p>
-      <button class="lang-toggle" type="button">Español</button>
-    </div>
-  </footer>
+if (cfg.chromeBg) document.getElementById('chrome').classList.add('with-bg');
 
-  <script type="module" src="js/i18n.js?v=8"></script>
-  <script type="module" src="js/main.js?v=8"></script>
+const canvas = document.getElementById('scene');
+const root = document.getElementById('scene-root');
+const out = document.getElementById('verdict');
+
+const opts = { canvas, antialias:false, alpha:false, preserveDrawingBuffer:false };
+if (cfg.half) opts.outputBufferType = THREE.HalfFloatType;
+
+let renderer, err = '';
+try { renderer = new THREE.WebGLRenderer(opts); }
+catch (e) { err = String(e).slice(0, 90); }
+
+let frames = 0, firstPaintScroll = null;
+
+if (renderer) {
+  const w = root.clientWidth, h = root.clientHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
+  renderer.setSize(w, h, false);
+
+  if (cfg.bloom) {
+    const b = new UnrealBloomPass(new THREE.Vector2(w, h), 1.5, 0.4, 0.85);
+    b.threshold = 0; b.strength = 0.06; b.radius = 0;
+    try { renderer.setEffects([b]); } catch (e) { err = 'setEffects: ' + String(e).slice(0,70); }
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d3b4a);
+  const cam = new THREE.PerspectiveCamera(55, w/h, 0.1, 100);
+  cam.position.z = 4;
+
+  // Deliberately loud and obviously animated, so "is it painting?"
+  // needs no interpretation.
+  const mesh = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(1, 0.35, 90, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff7a1a, wireframe:true })
+  );
+  scene.add(mesh);
+
+  renderer.setAnimationLoop(() => {
+    mesh.rotation.x += 0.012;
+    mesh.rotation.y += 0.017;
+    renderer.render(scene, cam);
+    if (frames === 0) firstPaintScroll = Math.round(scrollY);
+    frames++;
+  });
+}
+
+setInterval(() => {
+  out.textContent =
+    `mode      ${cfg.label}\n` +
+    `halffloat ${cfg.half ? 'on' : 'off'}   bloom ${cfg.bloom ? 'on' : 'off'}   chromeBg ${cfg.chromeBg ? 'on':'off'}\n` +
+    `frames    ${frames}   scrollY ${Math.round(scrollY)}\n` +
+    `canvas    ${canvas.width}x${canvas.height} css ${canvas.clientWidth}x${canvas.clientHeight}\n` +
+    (err ? `ERROR ${err}` : 'no errors');
+}, 250);
+</script>
 </body>
 </html>

@@ -70,10 +70,14 @@ const revealObserver = new IntersectionObserver(
 document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el));
 
 // ---------------------------------------------------------------- renderer
+const isPhone = window.matchMedia('(max-width: 768px)').matches;
+
+// Optional on-screen readout: append #debug to the URL.
+const DEBUG = location.hash.includes('debug');
+
 let renderer;
 try {
-  const isPhone = window.matchMedia('(max-width: 768px)').matches;
-  renderer = new THREE.WebGLRenderer({
+  const opts = {
     canvas,
     // MSAA is a meaningful cost on a phone GPU for a scene that is
     // mostly water and soft silhouettes, where it buys very little.
@@ -82,8 +86,14 @@ try {
     // preserveDrawingBuffer forces the driver to copy the framebuffer
     // every frame. It was masking the compositing bug, not fixing it.
     preserveDrawingBuffer: false,
-    outputBufferType: THREE.HalfFloatType,
-  });
+  };
+  // A half-float output buffer means three.js renders offscreen and
+  // blits to the canvas rather than drawing to the default framebuffer.
+  // On iOS that indirect present is the likeliest reason the first frame
+  // never reaches the screen until some other event flushes the layer.
+  // Phones draw direct; desktop keeps the wider colour precision.
+  if (!isPhone) opts.outputBufferType = THREE.HalfFloatType;
+  renderer = new THREE.WebGLRenderer(opts);
 } catch {
   // No WebGL: #scene-fallback stays in place as the sunset stand-in.
   canvas.remove();
@@ -94,7 +104,7 @@ if (renderer) {
 }
 
 function init(renderer) {
-  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  const isMobile = isPhone;
   // Marker class for styling hooks; the fallback is removed in JS, not CSS.
   document.documentElement.classList.add('has-webgl');
   // Size from #scene-root, which is laid out by CSS and always reports
@@ -109,16 +119,23 @@ function init(renderer) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.1;
 
-  const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(sceneW, sceneH),
-    1.5,
-    0.4,
-    0.85
-  );
-  bloomPass.threshold = 0;
-  bloomPass.strength = 0.06;
-  bloomPass.radius = 0;
-  renderer.setEffects([bloomPass]);
+  // Bloom at strength 0.06 / radius 0 is very close to a no-op visually,
+  // but any effect chain forces the whole scene through an offscreen
+  // target that is then blitted out. On mobile that trade is bad twice
+  // over: a wasted full-screen pass, and the indirect present path that
+  // iOS does not reliably flush on first paint. Desktop keeps it.
+  if (!isMobile) {
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(sceneW, sceneH),
+      1.5,
+      0.4,
+      0.85
+    );
+    bloomPass.threshold = 0;
+    bloomPass.strength = 0.06;
+    bloomPass.radius = 0;
+    renderer.setEffects([bloomPass]);
+  }
 
   const scene = new THREE.Scene();
 
@@ -442,12 +459,26 @@ function init(renderer) {
     document.getElementById('scene-fallback')?.remove();
   }
 
+  // iOS can build the canvas's compositing layer and then never present
+  // its first frame, which is what a scroll was accidentally fixing.
+  // Mutating a compositing-relevant property forces WebKit to rebuild
+  // and flush the layer without moving anything on screen.
+  let nudges = 0;
+  function nudgeCompositor() {
+    if (nudges++ > 4) return;
+    sceneRoot.style.transform = 'translateZ(0) scale(1.0002)';
+    requestAnimationFrame(() => {
+      sceneRoot.style.transform = 'translateZ(0)';
+    });
+  }
+
   function present() {
     syncRendererSize();
     renderFrame(prefersReducedMotion ? 12 : elapsed, 0);
     const gl = renderer.getContext();
     if (gl.flush) gl.flush();
     clearFallback();
+    nudgeCompositor();
   }
 
   if (prefersReducedMotion) {
@@ -465,4 +496,22 @@ function init(renderer) {
   setTimeout(present, 400);
 
   window.__mbcInit = true;
+
+  // ------------------------------------------------------------ #debug
+  if (DEBUG) {
+    const box = document.createElement('div');
+    box.style.cssText =
+      'position:fixed;top:4px;left:4px;z-index:99999999;background:rgba(0,0,0,.75);' +
+      'color:#4f4;font:11px/1.45 monospace;padding:4px 7px;border-radius:4px;' +
+      'pointer-events:none;white-space:pre';
+    document.body.appendChild(box);
+    setInterval(() => {
+      const gl = renderer.getContext();
+      box.textContent =
+        `frames ${window.__mbcFrames || 0}  scrollY ${Math.round(window.scrollY)}\n` +
+        `canvas ${canvas.width}x${canvas.height}  css ${canvas.clientWidth}x${canvas.clientHeight}\n` +
+        `effects ${isMobile ? 'off' : 'bloom'}  ctxlost ${gl.isContextLost() ? 'YES' : 'no'}\n` +
+        `fallback ${document.getElementById('scene-fallback') ? 'present' : 'removed'}`;
+    }, 250);
+  }
 }
