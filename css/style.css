@@ -22,15 +22,17 @@ html {
 }
 
 body {
-  /* Transparent so the fixed #scene canvas (z-index: -1) shows through
-     in the hero; every section below carries its own opaque background. */
+  /* Transparent so the fixed #scene canvas shows through the hero.
+     Sections below carry their own opaque backgrounds. overflow-x: clip
+     (not hidden) avoids the iOS bug where hidden on body makes
+     position:fixed descendants scroll with the document. */
   background: transparent;
   color: var(--sand);
   font-family: var(--sans);
   font-weight: 300;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .container {
@@ -47,26 +49,23 @@ body {
   height: 300svh;
 }
 
-.hero-sticky {
-  position: sticky;
+/* Title/header stay on screen for the whole hero scroll via fixed
+   positioning — not sticky. iOS promotes sticky boxes to a compositor
+   layer that does not composite as transparent, which hid the canvas
+   until the sticky unstuck (~200svh, scrollY ~1300 on iPhone). */
+.hero-chrome {
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  width: 100%;
+  height: 100%;
   height: 100svh;
   min-height: 560px;
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Promote to a stable GPU compositor layer. iOS WebKit otherwise fails
-     to paint the WebGL canvas inside a pinned sticky container until the
-     sticky element first moves (WebKit sticky repaint bugs, e.g. 226532),
-     leaving the fallback gradient below on screen until the hero was
-     scrolled through. Must be on the sticky element itself: a transform
-     on an ancestor would break position: sticky in Safari. */
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
+  z-index: 1;
+  pointer-events: none;
   /* fallback sunset if WebGL is unavailable */
   background: linear-gradient(
     to bottom,
@@ -79,27 +78,33 @@ body {
   );
 }
 
-/* Fixed full-viewport backdrop, deliberately OUTSIDE the sticky hero:
-   iOS WebKit mis-orders composited layers inside position: sticky
-   subtrees, which kept the painted WebGL canvas hidden behind the
-   hero's fallback background until deep into the scroll. Height uses
-   100lvh so the iOS toolbar collapsing doesn't resize the canvas. */
+.hero-chrome .hero-header,
+.hero-chrome .hero-content,
+.hero-chrome .scroll-cue { pointer-events: auto; }
+
+.hero-chrome.is-away {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Fixed full-viewport backdrop. z-index: 0 (never -1): a negative-z
+   canvas paints behind <html>'s background on iOS. 100lvh so the
+   toolbar collapsing doesn't resize the WebGL buffer. */
 #scene {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   height: 100lvh;
-  z-index: -1;
+  z-index: 0;
   display: block;
   pointer-events: none;
 }
 
-/* Once the WebGL scene is live the sticky hero must be see-through so
-   the fixed canvas behind it is visible; without WebGL the class is
-   never added and the gradient fallback remains. */
-.hero-sticky.has-webgl {
+/* WebGL is live: drop the chrome's fallback gradient so the canvas
+   shows through. Content sections sit at z-index 2 and cover both. */
+html.has-webgl .hero-chrome {
   background: none;
 }
 
@@ -266,6 +271,7 @@ body {
 
 .section {
   position: relative;
+  z-index: 2;
   padding: clamp(5rem, 12vw, 9rem) 0;
   background: var(--ink);
 }
@@ -391,6 +397,8 @@ body {
 /* ---------------- Footer ---------------- */
 
 .footer {
+  position: relative;
+  z-index: 2;
   border-top: 1px solid rgba(236, 227, 208, 0.08);
   padding: 3.4rem 0 3rem;
   text-align: center;

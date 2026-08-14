@@ -13,8 +13,18 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 
 const canvas = document.getElementById('scene');
 const hero = document.getElementById('hero'); // tall scroll region
-const stage = document.querySelector('.hero-sticky'); // on-screen viewport
+const chrome = document.querySelector('.hero-chrome');
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Hide the fixed chrome once the first content section reaches the top,
+// so it doesn't keep intercepting taps / focus under the opaque page.
+function updateChromeVisibility() {
+  const hideAt = hero.offsetHeight - window.innerHeight;
+  chrome.classList.toggle('is-away', window.scrollY >= hideAt);
+}
+window.addEventListener('scroll', updateChromeVisibility, { passive: true });
+window.addEventListener('resize', updateChromeVisibility);
+updateChromeVisibility();
 
 // ---------------------------------------------------------------- reveal-on-scroll
 // Runs regardless of WebGL support.
@@ -50,9 +60,8 @@ if (renderer) {
 
 function init(renderer) {
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
-  // WebGL is live: drop the hero's fallback gradient so the fixed canvas
-  // behind the page shows through.
-  stage.classList.add('has-webgl');
+  // WebGL is live: drop the chrome's fallback gradient so the canvas shows.
+  document.documentElement.classList.add('has-webgl');
   // The canvas is a fixed viewport backdrop sized by CSS; the third
   // argument keeps setSize from overriding that with inline styles.
   const sceneW = canvas.clientWidth;
@@ -167,7 +176,7 @@ function init(renderer) {
   // The hero sits at the top of the document, so window.scrollY tracks it
   // without the forced layout a per-frame getBoundingClientRect would cost.
   let heroHeight = hero.offsetHeight;
-  let scrollRange = heroHeight - stage.offsetHeight;
+  let scrollRange = heroHeight - window.innerHeight;
   function scrollProgress() {
     if (scrollRange <= 0) return 1;
     return THREE.MathUtils.clamp(window.scrollY / scrollRange, 0, 1);
@@ -292,7 +301,7 @@ function init(renderer) {
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
     heroHeight = hero.offsetHeight;
-    scrollRange = heroHeight - stage.offsetHeight;
+    scrollRange = heroHeight - window.innerHeight;
     if (prefersReducedMotion) renderFrame(12, 0);
   });
 

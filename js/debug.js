@@ -43,9 +43,11 @@ const t0 = Date.now();
 
 setInterval(() => {
   const canvas = document.getElementById('scene');
+  const hero = document.getElementById('hero');
   overlay.textContent =
     `t ${Math.floor((Date.now() - t0) / 1000)}s  raf ${rafTicks}\n` +
     `frames ${window.__mbcFrames || 0}  init ${window.__mbcInit ? 'y' : 'n'}  rm ${reducedMotion ? 'y' : 'n'}\n` +
-    `canvas ${canvas ? canvas.width + 'x' + canvas.height : 'REMOVED'}  scrollY ${Math.round(window.scrollY)}` +
+    `canvas ${canvas ? canvas.width + 'x' + canvas.height : 'REMOVED'}  scrollY ${Math.round(window.scrollY)}\n` +
+    `heroH ${hero ? hero.offsetHeight : '?'}  innerH ${window.innerHeight}  webgl ${document.documentElement.classList.contains('has-webgl') ? 'y' : 'n'}` +
     (lastError ? `\nerr ${lastError}` : '');
 }, 250);
