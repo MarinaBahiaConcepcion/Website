@@ -71,45 +71,76 @@ document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el))
 
 // ---------------------------------------------------------------- renderer
 const isPhone = window.matchMedia('(max-width: 768px)').matches;
-
-// Optional on-screen readout: append #debug to the URL.
+const HASH = new URLSearchParams(location.hash.slice(1));
 const DEBUG = location.hash.includes('debug');
+// Errors are shown on the page unless silenced with #quiet. Turn this
+// off once the scene is confirmed working on the phone.
+const SHOW_ERRORS = !location.hash.includes('quiet');
+
+// Every constant used inside init() is declared ABOVE the call site.
+// init() is invoked before its own declaration (function hoisting), so
+// a `const` placed after that call sits in the temporal dead zone and
+// throws the moment init() touches it.
+const LOOK = {
+  exposure: Number(HASH.get('exposure')) || 0.5,
+  sunStart: Number(HASH.get('sun')) || 22,
+};
+
+// Any failure here is reported on the page rather than swallowed. The
+// site was failing silently: init() threw, present() never ran, so
+// #scene-fallback was never removed and the CSS gradient stayed up
+// looking exactly like a scene that had not loaded yet.
+function reportError(where, e) {
+  const msg = `${where}: ${(e && e.message) || e}`;
+  console.error(msg, e);
+  if (!SHOW_ERRORS) return;
+  let bar = document.getElementById('mbc-error');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'mbc-error';
+    bar.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:99999999;background:#a11;' +
+      'color:#fff;font:12px/1.45 ui-monospace,monospace;padding:8px 10px;' +
+      'white-space:pre-wrap;word-break:break-word';
+    document.body.appendChild(bar);
+  }
+  bar.textContent += (bar.textContent ? '\n' : '') + msg;
+}
 
 let renderer;
+let hdrOutput = false;
+
+// Progressive degradation. setEffects() requires a HalfFloat or Float
+// output buffer, and that buffer is the part most likely to be refused
+// on a phone GPU, so if it is rejected we fall back to a plain
+// direct-to-canvas renderer instead of losing the scene entirely.
+const baseOpts = {
+  canvas,
+  antialias: true,
+  alpha: false,
+  preserveDrawingBuffer: false,
+};
+
 try {
-  const opts = {
-    canvas,
-    // MSAA is a meaningful cost on a phone GPU for a scene that is
-    // mostly water and soft silhouettes, where it buys very little.
-    antialias: !isPhone,
-    alpha: false,
-    // preserveDrawingBuffer forces the driver to copy the framebuffer
-    // every frame. It was masking the compositing bug, not fixing it.
-    preserveDrawingBuffer: false,
-  };
-  // A half-float output buffer means three.js renders offscreen and
-  // blits to the canvas rather than drawing to the default framebuffer.
-  // On iOS that indirect present is the likeliest reason the first frame
-  // never reaches the screen until some other event flushes the layer.
-  // Phones draw direct; desktop keeps the wider colour precision.
-  if (!isPhone) opts.outputBufferType = THREE.HalfFloatType;
-  renderer = new THREE.WebGLRenderer(opts);
-} catch {
-  // No WebGL: #scene-fallback stays in place as the sunset stand-in.
-  canvas.remove();
+  renderer = new THREE.WebGLRenderer({ ...baseOpts, outputBufferType: THREE.HalfFloatType });
+  hdrOutput = true;
+} catch (e) {
+  reportError('halffloat renderer', e);
+  try {
+    renderer = new THREE.WebGLRenderer(baseOpts);
+  } catch (e2) {
+    reportError('plain renderer', e2);
+    canvas.remove(); // no WebGL at all: #scene-fallback stands in
+  }
 }
 
 if (renderer) {
-  init(renderer);
+  try {
+    init(renderer);
+  } catch (e) {
+    reportError('init', e);
+  }
 }
-
-// ---------------------------------------------------------------- look
-// Tunable from the URL while dialling it in on a phone, e.g.
-//   .../#debug&exposure=0.7&sun=30
-const LOOK = {
-  exposure: Number(new URLSearchParams(location.hash.slice(1)).get('exposure')) || 0.5,
-  sunStart: Number(new URLSearchParams(location.hash.slice(1)).get('sun')) || 22,
-};
 
 function init(renderer) {
   const isMobile = isPhone;
@@ -135,7 +166,9 @@ function init(renderer) {
   // target that is then blitted out. On mobile that trade is bad twice
   // over: a wasted full-screen pass, and the indirect present path that
   // iOS does not reliably flush on first paint. Desktop keeps it.
-  if (!isMobile) {
+  // setEffects() hard-requires a HalfFloat/Float output buffer. Calling
+  // it without one throws and takes the whole scene down.
+  if (!isMobile && hdrOutput) {
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(sceneW, sceneH),
       1.5,
@@ -145,7 +178,11 @@ function init(renderer) {
     bloomPass.threshold = 0;
     bloomPass.strength = 0.06;
     bloomPass.radius = 0;
-    renderer.setEffects([bloomPass]);
+    try {
+      renderer.setEffects([bloomPass]);
+    } catch (e) {
+      reportError('setEffects', e);
+    }
   }
 
   const scene = new THREE.Scene();
@@ -524,7 +561,7 @@ function init(renderer) {
       box.textContent =
         `frames ${window.__mbcFrames || 0}  scrollY ${Math.round(window.scrollY)}\n` +
         `canvas ${canvas.width}x${canvas.height}  css ${canvas.clientWidth}x${canvas.clientHeight}\n` +
-        `effects ${isMobile ? 'off' : 'bloom'}  ctxlost ${gl.isContextLost() ? 'YES' : 'no'}\n` +
+        `hdr ${hdrOutput ? 'on' : 'off'}  effects ${(!isMobile && hdrOutput) ? 'bloom' : 'off'}  ctxlost ${gl.isContextLost() ? 'YES' : 'no'}\n` +
         `fallback ${document.getElementById('scene-fallback') ? 'present' : 'removed'}\n` +
         `exposure ${LOOK.exposure}  sun ${parameters.elevation.toFixed(1)}deg`;
     }, 250);

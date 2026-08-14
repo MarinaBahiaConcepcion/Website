@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>iOS WebGL first-paint isolation test</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { background:#111; overflow-x:clip; }
+  body { position:relative; color:#fff; font:13px/1.5 -apple-system,system-ui,sans-serif; }
+
+  /* Same structure as the real site */
+  #scene-root {
+    position:fixed; top:0; left:0; width:100%;
+    height:100vh; height:100lvh;
+    z-index:0; pointer-events:none; overflow:hidden;
+    transform:translateZ(0); -webkit-transform:translateZ(0);
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  }
+  #scene { position:relative; display:block; width:100%; height:100%; }
+
+  /* Stand-in for .hero-chrome */
+  #chrome {
+    position:fixed; top:0; left:0; width:100%; height:100svh;
+    z-index:1; pointer-events:none;
+  }
+  #chrome.with-bg {
+    background:linear-gradient(to bottom,#1b2a4a,#93536b 52%,#101c2b);
+  }
+  #scrim {
+    position:absolute; inset:0;
+    background:
+      linear-gradient(to bottom, rgba(7,13,20,.55) 0%, transparent 40%),
+      linear-gradient(to top, rgba(7,13,20,.9) 0%, transparent 36%);
+  }
+  #spacer { position:relative; z-index:2; height:300svh; }
+
+  #panel {
+    position:fixed; left:0; right:0; bottom:0; z-index:9999;
+    background:rgba(0,0,0,.86); padding:10px 12px;
+    border-top:1px solid #444;
+  }
+  #panel b { color:#6f6; }
+  #verdict { font:12px/1.5 ui-monospace,monospace; color:#6f6; white-space:pre; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  a.btn {
+    display:inline-block; padding:7px 10px; border:1px solid #666;
+    border-radius:6px; color:#fff; text-decoration:none; font-size:12px;
+  }
+  a.btn.on { border-color:#6f6; color:#6f6; }
+</style>
+</head>
+<body>
+
+<div id="scene-root"><canvas id="scene"></canvas></div>
+
+<div id="chrome"><div id="scrim"></div></div>
+
+<div id="spacer"></div>
+
+<div id="panel">
+  <div><b>Do you see a rotating orange/teal scene RIGHT NOW, without scrolling?</b></div>
+  <div class="row" id="modes"></div>
+  <div id="verdict" style="margin-top:8px">booting…</div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const P = new URLSearchParams(location.search);
+const MODE = P.get('mode') || 'direct';
+
+// mode matrix
+const MODES = {
+  direct:    { half:false, bloom:false, chromeBg:false, label:'1 · direct draw' },
+  halffloat: { half:true,  bloom:false, chromeBg:false, label:'2 · + halffloat' },
+  bloom:     { half:false, bloom:true,  chromeBg:false, label:'3 · + bloom' },
+  both:      { half:true,  bloom:true,  chromeBg:false, label:'4 · half+bloom' },
+  chromebg:  { half:false, bloom:false, chromeBg:true,  label:'5 · chrome bg' },
+};
+const cfg = MODES[MODE] || MODES.direct;
+
+const nav = document.getElementById('modes');
+for (const [k, v] of Object.entries(MODES)) {
+  const a = document.createElement('a');
+  a.className = 'btn' + (k === MODE ? ' on' : '');
+  a.href = '?mode=' + k;
+  a.textContent = v.label;
+  nav.appendChild(a);
+}
+
+if (cfg.chromeBg) document.getElementById('chrome').classList.add('with-bg');
+
+const canvas = document.getElementById('scene');
+const root = document.getElementById('scene-root');
+const out = document.getElementById('verdict');
+
+const opts = { canvas, antialias:false, alpha:false, preserveDrawingBuffer:false };
+if (cfg.half) opts.outputBufferType = THREE.HalfFloatType;
+
+let renderer, err = '';
+try { renderer = new THREE.WebGLRenderer(opts); }
+catch (e) { err = String(e).slice(0, 90); }
+
+let frames = 0, firstPaintScroll = null;
+
+if (renderer) {
+  const w = root.clientWidth, h = root.clientHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
+  renderer.setSize(w, h, false);
+
+  if (cfg.bloom) {
+    const b = new UnrealBloomPass(new THREE.Vector2(w, h), 1.5, 0.4, 0.85);
+    b.threshold = 0; b.strength = 0.06; b.radius = 0;
+    try { renderer.setEffects([b]); } catch (e) { err = 'setEffects: ' + String(e).slice(0,70); }
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d3b4a);
+  const cam = new THREE.PerspectiveCamera(55, w/h, 0.1, 100);
+  cam.position.z = 4;
+
+  // Deliberately loud and obviously animated, so "is it painting?"
+  // needs no interpretation.
+  const mesh = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(1, 0.35, 90, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff7a1a, wireframe:true })
+  );
+  scene.add(mesh);
+
+  renderer.setAnimationLoop(() => {
+    mesh.rotation.x += 0.012;
+    mesh.rotation.y += 0.017;
+    renderer.render(scene, cam);
+    if (frames === 0) firstPaintScroll = Math.round(scrollY);
+    frames++;
+  });
+}
+
+setInterval(() => {
+  out.textContent =
+    `mode      ${cfg.label}\n` +
+    `halffloat ${cfg.half ? 'on' : 'off'}   bloom ${cfg.bloom ? 'on' : 'off'}   chromeBg ${cfg.chromeBg ? 'on':'off'}\n` +
+    `frames    ${frames}   scrollY ${Math.round(scrollY)}\n` +
+    `canvas    ${canvas.width}x${canvas.height} css ${canvas.clientWidth}x${canvas.clientHeight}\n` +
+    (err ? `ERROR ${err}` : 'no errors');
+}, 250);
+</script>
+</body>
+</html>
