@@ -78,7 +78,7 @@ document.querySelector('.scroll-cue')?.addEventListener('click', (event) => {
   const distance = target - start;
   if (Math.abs(distance) < 2) return;
 
-  const duration = 4000;
+  const duration = 1.500;
   const html = document.documentElement;
   const previousBehavior = html.style.scrollBehavior;
   html.style.scrollBehavior = 'auto';
