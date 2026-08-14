@@ -50,16 +50,23 @@ if (renderer) {
 
 function init(renderer) {
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  // WebGL is live: drop the hero's fallback gradient so the fixed canvas
+  // behind the page shows through.
+  stage.classList.add('has-webgl');
+  // The canvas is a fixed viewport backdrop sized by CSS; the third
+  // argument keeps setSize from overriding that with inline styles.
+  const sceneW = canvas.clientWidth;
+  const sceneH = canvas.clientHeight;
   // Cap the pixel ratio at 1.5: the scene renders three full-screen passes
   // per frame (main + mirror + bloom), and above 1.5 the GPU cost starts
   // starving the rest of the page (hover transitions, scrolling).
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-  renderer.setSize(stage.clientWidth, stage.clientHeight);
+  renderer.setSize(sceneW, sceneH, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.1;
 
   const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(stage.clientWidth, stage.clientHeight),
+    new THREE.Vector2(sceneW, sceneH),
     1.5,
     0.4,
     0.85
@@ -71,7 +78,7 @@ function init(renderer) {
 
   const scene = new THREE.Scene();
 
-  const camera = new THREE.PerspectiveCamera(52, stage.clientWidth / stage.clientHeight, 1, 25000);
+  const camera = new THREE.PerspectiveCamera(52, sceneW / sceneH, 1, 25000);
   // roughly the official example's viewpoint: elevated, looking down
   // at the water so the ripple detail reads
   camera.position.set(0, 45, 120);
@@ -279,11 +286,11 @@ function init(renderer) {
 
   // ------------------------------------------------------------ resize
   window.addEventListener('resize', () => {
-    const w = stage.clientWidth;
-    const h = stage.clientHeight;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
+    renderer.setSize(w, h, false);
     heroHeight = hero.offsetHeight;
     scrollRange = heroHeight - stage.offsetHeight;
     if (prefersReducedMotion) renderFrame(12, 0);
